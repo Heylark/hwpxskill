@@ -616,7 +616,34 @@ python3 "$SKILL_DIR/scripts/text_extract.py" document.hwpx --include-tables
 
 # 마크다운 형식
 python3 "$SKILL_DIR/scripts/text_extract.py" document.hwpx --format markdown
+
+# 표만 (행, 열) 격자로 — 병합 셀이 있는 표를 분석할 때
+python3 "$SKILL_DIR/scripts/text_extract.py" document.hwpx --tables-grid
+python3 "$SKILL_DIR/scripts/text_extract.py" document.hwpx --tables-grid --grid-format json
 ```
+
+### 표 격자 추출 (`--tables-grid`)
+
+`--include-tables`·`--format markdown` 은 `hp:tc` 를 등장 순서대로 읽는다. 위 행의 셀이 `rowSpan` 으로 내려오면 아래 행의 `hp:tc` 개수가 그만큼 줄어서, 등장 순서로 읽은 값은 왼쪽 열로 밀린다(예: 「구분」 열이 9행 병합이면 그 아래 행의 요구사항 ID 가 「구분」 열에 놓인다). 표의 열 의미가 중요한 분석(요구사항표·협상안·평가표 등)은 `--tables-grid` 로 뽑는다.
+
+- 각 셀을 `hp:cellAddr`(`colAddr`·`rowAddr`) 좌표에 놓고, `hp:cellSpan`(`colSpan`·`rowSpan`)으로 덮는 범위를 기록한다.
+- 표마다 머리 줄에 번호·`rowCnt`·`colCnt`·구역 번호를 둔다. 번호는 구역 순서·문서 순서대로 1부터 매기며 셀 안 표(중첩 표)도 번호를 받는다. 중첩 표는 따로 출력되고 머리 줄에 `바깥표=N` 이 붙으며, 바깥 셀에는 `[표 N]` 자리 표시만 남는다.
+- 셀 안 여러 문단은 ` / ` 로 이어 한 칸에 넣는다. 빈 문단은 건너뛴다.
+- 병합 셀은 시작 좌표 칸에만 값을 두고, 덮인 칸은 비운다. TSV 는 시작 칸 값 앞에 `[병합 R행×C열]` 을 붙이고, JSON 은 `cells[]` 마다 `row`·`col`·`rowSpan`·`colSpan`·`text` 를, `grid` 에 `rowCnt × colCnt` 2차원 배열을 담는다.
+- 좌표가 선언 크기를 넘거나 두 셀이 같은 칸을 덮으면 stderr 에 `Warning:` 을 내고 출력은 계속한다. `hp:cellAddr` 가 없는 셀이 있으면 격자를 만들지 않고 멈춘다.
+- **외부에서 받은 문서를 전제로** 섹션 XML 에 `<!DOCTYPE`·`<!ENTITY` 선언이 있으면(UTF-8·UTF-16 모두) 파싱하기 전에 거부하고 rc 1 로 끝난다(XXE·엔티티 폭탄 방지). 파서도 DTD 를 읽지 않고 네트워크에 접근하지 않는다.
+- `--format`·`--include-tables` 와 함께 쓸 수 없다(rc 2). 기존 세 모드의 출력은 바뀌지 않는다.
+
+TSV 예시(회귀 시험의 3×3 표를 실제로 뽑은 결과. A 가 2행 병합, B 가 2열 병합이라 1행에는 `hp:tc` 가 둘뿐이고, D 칸은 줄바꿈이 공백으로 바뀐다):
+
+```
+# 표 1	rowCnt=3	colCnt=3	구역=0
+[병합 2행×1열] A	[병합 1행×2열] B	
+	C	D1 D2
+E1 / E2	바깥 [표 2]	G
+```
+
+Python 에서 직접 쓸 때는 `text_extract.extract_tables_grid(path)` 가 `(표 목록, 경고 목록)` 을 돌려준다. 회귀 시험은 `tests/test_text_extract_grid.py` 다.
 
 ### Python API
 
@@ -724,7 +751,7 @@ python3 "$SKILL_DIR/scripts/page_guard.py" \
 | `scripts/page_guard.py` | 레퍼런스 대비 페이지 드리프트 위험 검사 (필수 게이트) |
 | `scripts/content_guard.py` | 원문 잔재, placeholder, 필수 키워드 누락 검사 |
 | `scripts/gonmun_lint.py` | 공문서 날짜/시간/금액/붙임 표기 검수 |
-| `scripts/text_extract.py` | HWPX 텍스트 추출 |
+| `scripts/text_extract.py` | HWPX 텍스트 추출 (`--tables-grid`: 표를 좌표 기준 격자로) |
 
 ## 단위 변환
 
